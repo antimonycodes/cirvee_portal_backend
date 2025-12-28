@@ -206,7 +206,7 @@ export class PaymentService {
     }
 
     // Get cohort details
-    const cohort = await prisma.$transaction(async (tx:PrismaClient) => {
+    const cohort = await prisma.$transaction(async (tx) => {
       return await tx.cohort.findUnique({
         where: { id: data.cohortId },
         include: {
@@ -303,7 +303,7 @@ export class PaymentService {
     }
 
     // Create payment record with transaction
-    const payment = await prisma.$transaction(async (tx:PrismaClient) => {
+    const payment = await prisma.$transaction(async (tx) => {
       const newPayment = await tx.payment.create({
         data: {
           reference,
@@ -406,7 +406,7 @@ export class PaymentService {
   
   static async verifyPayment(reference: string, webhookData?: any) {
     // Get payment
-    const payment = await prisma.$transaction(async (tx:PrismaClient) => {
+    const payment = await prisma.$transaction(async (tx) => {
   return await tx.payment.findUnique({
     where: { reference },
     include: {
@@ -459,7 +459,7 @@ export class PaymentService {
     const paystackData = verification.data;
 
     // Update payment in transaction
-    const updatedPayment = await prisma.$transaction(async (tx:PrismaClient) => {
+    const updatedPayment = await prisma.$transaction(async (tx) => {
       // Check payment status from Paystack
       if (paystackData.status !== "success") {
         // Payment failed
@@ -710,7 +710,7 @@ export class PaymentService {
     const paystackResponse = await this.callPaystack("/transaction/initialize", "POST", paystackPayload);
 
     // Create transaction record
-    await prisma.$transaction(async (tx:PrismaClient) => {
+    await prisma.$transaction(async (tx) => {
       await tx.paymentTransaction.create({
         data: {
           paymentId: payment.id,
@@ -911,7 +911,7 @@ export class PaymentService {
       throw new NotFoundError("Payment not found");
     }
 
-    const updatedPayment = await prisma.$transaction(async (tx:PrismaClient) => {
+    const updatedPayment = await prisma.$transaction(async (tx) => {
       const updated = await tx.payment.update({
         where: { id: paymentId },
         data: {

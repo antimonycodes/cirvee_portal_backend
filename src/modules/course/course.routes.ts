@@ -180,8 +180,8 @@ router.patch(
  *   get:
  *     summary: Get all courses (Public)
  *     tags: [Courses]
-//  *     security:
-//  *       - bearerAuth: []
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page

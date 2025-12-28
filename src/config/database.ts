@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { PrismaClient } from "../generated/prisma";
+import { PrismaClient } from "@prisma/client";
 import logger from "../utils/logger";
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };

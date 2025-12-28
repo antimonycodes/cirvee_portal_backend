@@ -1,16 +1,23 @@
 import Redis from "ioredis";
 import logger from "../utils/logger";
 
-const redis = new Redis({
-  host: process.env.REDIS_HOST || "localhost",
-  port: parseInt(process.env.REDIS_PORT || "6379"),
-  password: process.env.REDIS_PASSWORD || undefined,
-  retryStrategy: (times) => {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-  maxRetriesPerRequest: 3,
-});
+// const redis = new Redis({
+//   host: process.env.REDIS_HOST || "localhost",
+//   port: parseInt(process.env.REDIS_PORT || "6379"),
+//   password: process.env.REDIS_PASSWORD || undefined,
+//   retryStrategy: (times) => {
+//     const delay = Math.min(times * 50, 2000);
+//     return delay;
+//   },
+//   maxRetriesPerRequest: 3,
+// });
+
+const redisUrl = process.env.REDIS_URL;
+if (!redisUrl) {
+  throw new Error("REDIS_URL is not defined");
+}
+
+const redis = new Redis(redisUrl);
 
 redis.on("connect", () => {
   logger.info("Redis connected ");

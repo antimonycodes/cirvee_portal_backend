@@ -28,4 +28,8 @@ coverage/
 uploads/
 
 docker-compose.override.yml
+Dockerfile
+docker-compose.yml
+docker-compose.yaml
+
 /src/generated/prisma
