@@ -25,9 +25,9 @@ const startServer = async () => {
       logger.info("=".repeat(50));
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV}`);
-      logger.info(`Health check: http://localhost:${PORT}/health`);
-      logger.info(`API Docs: http://localhost:${PORT}/docs`);
-      logger.info(` System Test: http://localhost:${PORT}/test-system`);
+      logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
+      logger.info(`API Docs: http://localhost:${PORT}/api/v1/docs`);
+      logger.info(` System Test: http://localhost:${PORT}/api/v1/test-system`);
     });
 
     const gracefulShutdown = async (signal: string) => {

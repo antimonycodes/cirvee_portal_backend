@@ -216,6 +216,8 @@ export class AuthService {
       },
     });
 
+    logger.info("Login user:", user);
+
     if (!user || user.role === UserRole.STUDENT) {
       throw new Error("Invalid Credentials");
     }

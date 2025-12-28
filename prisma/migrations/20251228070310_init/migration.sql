@@ -1,14 +1,23 @@
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'TUTOR', 'STUDENT');
+CREATE TYPE "UserRole" AS ENUM ('SUPER_ADMIN', 'ADMIN', 'TUTOR', 'STUDENT');
 
 -- CreateEnum
 CREATE TYPE "AttendanceStatus" AS ENUM ('PRESENT', 'ABSENT');
 
 -- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED', 'PARTIAL');
+CREATE TYPE "PaymentState" AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'REFUNDED', 'CANCELLED', 'EXPIRED');
 
 -- CreateEnum
-CREATE TYPE "PaymentPlan" AS ENUM ('FULL', 'INSTALLMENT');
+CREATE TYPE "PaymentMethod" AS ENUM ('CARD', 'BANK_TRANSFER', 'USSD', 'MOBILE_MONEY', 'QR_CODE');
+
+-- CreateEnum
+CREATE TYPE "InstallmentPlan" AS ENUM ('FULL_PAYMENT', 'TWO_INSTALLMENTS');
+
+-- CreateEnum
+CREATE TYPE "TransactionType" AS ENUM ('FULL_PAYMENT', 'FIRST_INSTALLMENT', 'SECOND_INSTALLMENT');
+
+-- CreateEnum
+CREATE TYPE "RefundStatus" AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED');
 
 -- CreateEnum
 CREATE TYPE "CohortStatus" AS ENUM ('UPCOMING', 'ONGOING', 'COMPLETED');
@@ -21,6 +30,21 @@ CREATE TYPE "EnrollmentStatus" AS ENUM ('ACTIVE', 'COMPLETED', 'DROPPED');
 
 -- CreateEnum
 CREATE TYPE "ActivityAction" AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT');
+
+-- CreateEnum
+CREATE TYPE "AttendanceLogType" AS ENUM ('CHECK_IN', 'CHECK_OUT');
+
+-- CreateTable
+CREATE TABLE "Department" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Department_pkey" PRIMARY KEY ("id")
+);
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -49,7 +73,7 @@ CREATE TABLE "Admin" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "staffId" TEXT NOT NULL,
-    "department" TEXT,
+    "departmentId" TEXT,
     "permissions" TEXT[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -62,6 +86,7 @@ CREATE TABLE "Tutor" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "staffId" TEXT NOT NULL,
+    "departmentId" TEXT,
     "bio" TEXT,
     "expertise" TEXT[],
     "yearsOfExperience" INTEGER,
@@ -141,6 +166,7 @@ CREATE TABLE "Material" (
     "description" TEXT,
     "type" TEXT NOT NULL,
     "url" TEXT NOT NULL,
+    "publicId" TEXT,
     "order" INTEGER NOT NULL DEFAULT 0,
     "uploadedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -182,6 +208,7 @@ CREATE TABLE "AssignmentSubmission" (
     "assignmentId" TEXT NOT NULL,
     "studentId" TEXT NOT NULL,
     "fileUrl" TEXT NOT NULL,
+    "filePublicId" TEXT,
     "submittedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "status" "AssignmentStatus" NOT NULL DEFAULT 'SUBMITTED',
     "grade" INTEGER,
@@ -215,6 +242,7 @@ CREATE TABLE "Community" (
     "createdById" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "userId" TEXT,
 
     CONSTRAINT "Community_pkey" PRIMARY KEY ("id")
 );
@@ -223,8 +251,9 @@ CREATE TABLE "Community" (
 CREATE TABLE "CommunityMember" (
     "id" TEXT NOT NULL,
     "communityId" TEXT NOT NULL,
-    "studentId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "studentId" TEXT,
 
     CONSTRAINT "CommunityMember_pkey" PRIMARY KEY ("id")
 );
@@ -243,6 +272,19 @@ CREATE TABLE "Post" (
 );
 
 -- CreateTable
+CREATE TABLE "Comment" (
+    "id" TEXT NOT NULL,
+    "postId" TEXT NOT NULL,
+    "authorId" TEXT NOT NULL,
+    "parentId" TEXT,
+    "content" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Comment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "PostLike" (
     "id" TEXT NOT NULL,
     "postId" TEXT NOT NULL,
@@ -253,31 +295,30 @@ CREATE TABLE "PostLike" (
 );
 
 -- CreateTable
-CREATE TABLE "Comment" (
-    "id" TEXT NOT NULL,
-    "postId" TEXT NOT NULL,
-    "authorId" TEXT NOT NULL,
-    "content" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Comment_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "Announcement" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "content" TEXT NOT NULL,
-    "cohortId" TEXT,
+    "isGlobal" BOOLEAN NOT NULL DEFAULT false,
     "createdById" TEXT NOT NULL,
     "createdByType" TEXT NOT NULL,
     "tutorId" TEXT,
     "adminId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "cohortId" TEXT,
 
     CONSTRAINT "Announcement_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AnnouncementCohort" (
+    "id" TEXT NOT NULL,
+    "announcementId" TEXT NOT NULL,
+    "cohortId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AnnouncementCohort_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -293,23 +334,98 @@ CREATE TABLE "AnnouncementLike" (
 -- CreateTable
 CREATE TABLE "Payment" (
     "id" TEXT NOT NULL,
+    "reference" TEXT NOT NULL,
+    "paystackReference" TEXT,
+    "idempotencyKey" TEXT NOT NULL,
     "studentId" TEXT NOT NULL,
-    "courseId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "cohortId" TEXT NOT NULL,
-    "amount" DECIMAL(10,2) NOT NULL,
-    "status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
-    "paymentMethod" TEXT NOT NULL,
-    "transactionId" TEXT,
-    "plan" "PaymentPlan" NOT NULL DEFAULT 'FULL',
-    "totalInstallments" INTEGER,
-    "paidInstallments" INTEGER DEFAULT 0,
-    "amountPerInstallment" DECIMAL(10,2),
-    "nextDueDate" TIMESTAMP(3),
-    "paidAt" TIMESTAMP(3),
+    "courseId" TEXT NOT NULL,
+    "totalAmountKobo" INTEGER NOT NULL,
+    "paidAmountKobo" INTEGER NOT NULL DEFAULT 0,
+    "balanceKobo" INTEGER NOT NULL,
+    "status" "PaymentState" NOT NULL DEFAULT 'PENDING',
+    "paymentMethod" "PaymentMethod",
+    "currency" TEXT NOT NULL DEFAULT 'NGN',
+    "installmentPlan" "InstallmentPlan" NOT NULL DEFAULT 'FULL_PAYMENT',
+    "firstInstallmentKobo" INTEGER,
+    "firstInstallmentPaidAt" TIMESTAMP(3),
+    "firstInstallmentReference" TEXT,
+    "secondInstallmentKobo" INTEGER,
+    "secondInstallmentDueDate" TIMESTAMP(3),
+    "secondInstallmentPaidAt" TIMESTAMP(3),
+    "secondInstallmentReference" TEXT,
+    "paystackAuthUrl" TEXT,
+    "paystackAccessCode" TEXT,
+    "paystackChannels" TEXT[],
+    "ipAddress" TEXT,
+    "userAgent" TEXT,
+    "metadata" JSONB,
+    "initiatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "confirmedAt" TIMESTAMP(3),
+    "expiresAt" TIMESTAMP(3),
+    "lastCheckedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Payment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PaymentTransaction" (
+    "id" TEXT NOT NULL,
+    "paymentId" TEXT NOT NULL,
+    "reference" TEXT NOT NULL,
+    "paystackReference" TEXT,
+    "type" "TransactionType" NOT NULL,
+    "amountKobo" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'NGN',
+    "status" "PaymentState" NOT NULL DEFAULT 'PENDING',
+    "paymentMethod" "PaymentMethod",
+    "gatewayResponse" JSONB,
+    "gatewayMessage" TEXT,
+    "gatewayCode" TEXT,
+    "initiatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "completedAt" TIMESTAMP(3),
+    "failedAt" TIMESTAMP(3),
+    "ipAddress" TEXT,
+    "channel" TEXT,
+
+    CONSTRAINT "PaymentTransaction_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PaymentRefund" (
+    "id" TEXT NOT NULL,
+    "paymentId" TEXT NOT NULL,
+    "reference" TEXT NOT NULL,
+    "amountKobo" INTEGER NOT NULL,
+    "reason" TEXT NOT NULL,
+    "status" "RefundStatus" NOT NULL DEFAULT 'PENDING',
+    "paystackReference" TEXT,
+    "gatewayResponse" JSONB,
+    "initiatedBy" TEXT NOT NULL,
+    "initiatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "completedAt" TIMESTAMP(3),
+
+    CONSTRAINT "PaymentRefund_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PaymentAuditLog" (
+    "id" TEXT NOT NULL,
+    "paymentId" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "actor" TEXT,
+    "actorType" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "previousStatus" TEXT,
+    "newStatus" TEXT,
+    "metadata" JSONB,
+    "ipAddress" TEXT,
+    "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PaymentAuditLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -343,6 +459,40 @@ CREATE TABLE "ActivityLog" (
     CONSTRAINT "ActivityLog_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "AttendanceQRCode" (
+    "id" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "locationName" TEXT NOT NULL,
+    "cohortId" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdById" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "AttendanceQRCode_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AttendanceLog" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "qrCodeId" TEXT NOT NULL,
+    "cohortId" TEXT,
+    "timetableId" TEXT,
+    "type" "AttendanceLogType" NOT NULL,
+    "locationName" TEXT NOT NULL,
+    "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AttendanceLog_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Department_name_key" ON "Department"("name");
+
+-- CreateIndex
+CREATE INDEX "Department_name_idx" ON "Department"("name");
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -363,6 +513,9 @@ CREATE UNIQUE INDEX "Admin_staffId_key" ON "Admin"("staffId");
 
 -- CreateIndex
 CREATE INDEX "Admin_staffId_idx" ON "Admin"("staffId");
+
+-- CreateIndex
+CREATE INDEX "Admin_departmentId_idx" ON "Admin"("departmentId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Tutor_userId_key" ON "Tutor"("userId");
@@ -458,10 +611,10 @@ CREATE INDEX "Community_name_idx" ON "Community"("name");
 CREATE INDEX "CommunityMember_communityId_idx" ON "CommunityMember"("communityId");
 
 -- CreateIndex
-CREATE INDEX "CommunityMember_studentId_idx" ON "CommunityMember"("studentId");
+CREATE INDEX "CommunityMember_userId_idx" ON "CommunityMember"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CommunityMember_communityId_studentId_key" ON "CommunityMember"("communityId", "studentId");
+CREATE UNIQUE INDEX "CommunityMember_communityId_userId_key" ON "CommunityMember"("communityId", "userId");
 
 -- CreateIndex
 CREATE INDEX "Post_communityId_idx" ON "Post"("communityId");
@@ -470,7 +623,13 @@ CREATE INDEX "Post_communityId_idx" ON "Post"("communityId");
 CREATE INDEX "Post_authorId_idx" ON "Post"("authorId");
 
 -- CreateIndex
-CREATE INDEX "Post_createdAt_idx" ON "Post"("createdAt");
+CREATE INDEX "Comment_postId_idx" ON "Comment"("postId");
+
+-- CreateIndex
+CREATE INDEX "Comment_authorId_idx" ON "Comment"("authorId");
+
+-- CreateIndex
+CREATE INDEX "Comment_parentId_idx" ON "Comment"("parentId");
 
 -- CreateIndex
 CREATE INDEX "PostLike_postId_idx" ON "PostLike"("postId");
@@ -479,34 +638,103 @@ CREATE INDEX "PostLike_postId_idx" ON "PostLike"("postId");
 CREATE UNIQUE INDEX "PostLike_postId_userId_key" ON "PostLike"("postId", "userId");
 
 -- CreateIndex
-CREATE INDEX "Comment_postId_idx" ON "Comment"("postId");
+CREATE INDEX "Announcement_createdById_idx" ON "Announcement"("createdById");
 
 -- CreateIndex
-CREATE INDEX "Comment_authorId_idx" ON "Comment"("authorId");
-
--- CreateIndex
-CREATE INDEX "Announcement_cohortId_idx" ON "Announcement"("cohortId");
+CREATE INDEX "Announcement_isGlobal_idx" ON "Announcement"("isGlobal");
 
 -- CreateIndex
 CREATE INDEX "Announcement_createdAt_idx" ON "Announcement"("createdAt");
 
 -- CreateIndex
+CREATE INDEX "AnnouncementCohort_announcementId_idx" ON "AnnouncementCohort"("announcementId");
+
+-- CreateIndex
+CREATE INDEX "AnnouncementCohort_cohortId_idx" ON "AnnouncementCohort"("cohortId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AnnouncementCohort_announcementId_cohortId_key" ON "AnnouncementCohort"("announcementId", "cohortId");
+
+-- CreateIndex
 CREATE INDEX "AnnouncementLike_announcementId_idx" ON "AnnouncementLike"("announcementId");
+
+-- CreateIndex
+CREATE INDEX "AnnouncementLike_userId_idx" ON "AnnouncementLike"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AnnouncementLike_announcementId_userId_key" ON "AnnouncementLike"("announcementId", "userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Payment_transactionId_key" ON "Payment"("transactionId");
+CREATE UNIQUE INDEX "Payment_reference_key" ON "Payment"("reference");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Payment_paystackReference_key" ON "Payment"("paystackReference");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Payment_idempotencyKey_key" ON "Payment"("idempotencyKey");
+
+-- CreateIndex
+CREATE INDEX "Payment_reference_idx" ON "Payment"("reference");
+
+-- CreateIndex
+CREATE INDEX "Payment_paystackReference_idx" ON "Payment"("paystackReference");
 
 -- CreateIndex
 CREATE INDEX "Payment_studentId_idx" ON "Payment"("studentId");
 
 -- CreateIndex
+CREATE INDEX "Payment_cohortId_idx" ON "Payment"("cohortId");
+
+-- CreateIndex
 CREATE INDEX "Payment_status_idx" ON "Payment"("status");
 
 -- CreateIndex
-CREATE INDEX "Payment_transactionId_idx" ON "Payment"("transactionId");
+CREATE INDEX "Payment_installmentPlan_idx" ON "Payment"("installmentPlan");
+
+-- CreateIndex
+CREATE INDEX "Payment_createdAt_idx" ON "Payment"("createdAt");
+
+-- CreateIndex
+CREATE INDEX "Payment_idempotencyKey_idx" ON "Payment"("idempotencyKey");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PaymentTransaction_reference_key" ON "PaymentTransaction"("reference");
+
+-- CreateIndex
+CREATE INDEX "PaymentTransaction_paymentId_idx" ON "PaymentTransaction"("paymentId");
+
+-- CreateIndex
+CREATE INDEX "PaymentTransaction_reference_idx" ON "PaymentTransaction"("reference");
+
+-- CreateIndex
+CREATE INDEX "PaymentTransaction_paystackReference_idx" ON "PaymentTransaction"("paystackReference");
+
+-- CreateIndex
+CREATE INDEX "PaymentTransaction_status_idx" ON "PaymentTransaction"("status");
+
+-- CreateIndex
+CREATE INDEX "PaymentTransaction_initiatedAt_idx" ON "PaymentTransaction"("initiatedAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PaymentRefund_reference_key" ON "PaymentRefund"("reference");
+
+-- CreateIndex
+CREATE INDEX "PaymentRefund_paymentId_idx" ON "PaymentRefund"("paymentId");
+
+-- CreateIndex
+CREATE INDEX "PaymentRefund_reference_idx" ON "PaymentRefund"("reference");
+
+-- CreateIndex
+CREATE INDEX "PaymentRefund_status_idx" ON "PaymentRefund"("status");
+
+-- CreateIndex
+CREATE INDEX "PaymentAuditLog_paymentId_idx" ON "PaymentAuditLog"("paymentId");
+
+-- CreateIndex
+CREATE INDEX "PaymentAuditLog_action_idx" ON "PaymentAuditLog"("action");
+
+-- CreateIndex
+CREATE INDEX "PaymentAuditLog_timestamp_idx" ON "PaymentAuditLog"("timestamp");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Certificate_certificateNumber_key" ON "Certificate"("certificateNumber");
@@ -529,11 +757,41 @@ CREATE INDEX "ActivityLog_entity_idx" ON "ActivityLog"("entity");
 -- CreateIndex
 CREATE INDEX "ActivityLog_createdAt_idx" ON "ActivityLog"("createdAt");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "AttendanceQRCode_token_key" ON "AttendanceQRCode"("token");
+
+-- CreateIndex
+CREATE INDEX "AttendanceQRCode_token_idx" ON "AttendanceQRCode"("token");
+
+-- CreateIndex
+CREATE INDEX "AttendanceQRCode_cohortId_idx" ON "AttendanceQRCode"("cohortId");
+
+-- CreateIndex
+CREATE INDEX "AttendanceLog_userId_idx" ON "AttendanceLog"("userId");
+
+-- CreateIndex
+CREATE INDEX "AttendanceLog_qrCodeId_idx" ON "AttendanceLog"("qrCodeId");
+
+-- CreateIndex
+CREATE INDEX "AttendanceLog_cohortId_idx" ON "AttendanceLog"("cohortId");
+
+-- CreateIndex
+CREATE INDEX "AttendanceLog_timetableId_idx" ON "AttendanceLog"("timetableId");
+
+-- CreateIndex
+CREATE INDEX "AttendanceLog_timestamp_idx" ON "AttendanceLog"("timestamp");
+
 -- AddForeignKey
 ALTER TABLE "Admin" ADD CONSTRAINT "Admin_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Admin" ADD CONSTRAINT "Admin_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Tutor" ADD CONSTRAINT "Tutor_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Tutor" ADD CONSTRAINT "Tutor_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Student" ADD CONSTRAINT "Student_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -590,13 +848,16 @@ ALTER TABLE "Attendance" ADD CONSTRAINT "Attendance_studentId_fkey" FOREIGN KEY 
 ALTER TABLE "Attendance" ADD CONSTRAINT "Attendance_markedById_fkey" FOREIGN KEY ("markedById") REFERENCES "Tutor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Community" ADD CONSTRAINT "Community_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Admin"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Community" ADD CONSTRAINT "Community_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CommunityMember" ADD CONSTRAINT "CommunityMember_communityId_fkey" FOREIGN KEY ("communityId") REFERENCES "Community"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CommunityMember" ADD CONSTRAINT "CommunityMember_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CommunityMember" ADD CONSTRAINT "CommunityMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CommunityMember" ADD CONSTRAINT "CommunityMember_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Post" ADD CONSTRAINT "Post_communityId_fkey" FOREIGN KEY ("communityId") REFERENCES "Community"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -605,25 +866,34 @@ ALTER TABLE "Post" ADD CONSTRAINT "Post_communityId_fkey" FOREIGN KEY ("communit
 ALTER TABLE "Post" ADD CONSTRAINT "Post_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PostLike" ADD CONSTRAINT "PostLike_postId_fkey" FOREIGN KEY ("postId") REFERENCES "Post"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PostLike" ADD CONSTRAINT "PostLike_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "Comment" ADD CONSTRAINT "Comment_postId_fkey" FOREIGN KEY ("postId") REFERENCES "Post"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Comment" ADD CONSTRAINT "Comment_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_cohortId_fkey" FOREIGN KEY ("cohortId") REFERENCES "Cohort"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Comment" ADD CONSTRAINT "Comment_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Comment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PostLike" ADD CONSTRAINT "PostLike_postId_fkey" FOREIGN KEY ("postId") REFERENCES "Post"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PostLike" ADD CONSTRAINT "PostLike_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "Admin"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_tutorId_fkey" FOREIGN KEY ("tutorId") REFERENCES "Tutor"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Announcement" ADD CONSTRAINT "Announcement_cohortId_fkey" FOREIGN KEY ("cohortId") REFERENCES "Cohort"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AnnouncementCohort" ADD CONSTRAINT "AnnouncementCohort_announcementId_fkey" FOREIGN KEY ("announcementId") REFERENCES "Announcement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AnnouncementCohort" ADD CONSTRAINT "AnnouncementCohort_cohortId_fkey" FOREIGN KEY ("cohortId") REFERENCES "Cohort"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AnnouncementLike" ADD CONSTRAINT "AnnouncementLike_announcementId_fkey" FOREIGN KEY ("announcementId") REFERENCES "Announcement"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -635,10 +905,22 @@ ALTER TABLE "AnnouncementLike" ADD CONSTRAINT "AnnouncementLike_userId_fkey" FOR
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Payment" ADD CONSTRAINT "Payment_courseId_fkey" FOREIGN KEY ("courseId") REFERENCES "Course"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Payment" ADD CONSTRAINT "Payment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_cohortId_fkey" FOREIGN KEY ("cohortId") REFERENCES "Cohort"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Payment" ADD CONSTRAINT "Payment_courseId_fkey" FOREIGN KEY ("courseId") REFERENCES "Course"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "Payment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PaymentRefund" ADD CONSTRAINT "PaymentRefund_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "Payment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PaymentAuditLog" ADD CONSTRAINT "PaymentAuditLog_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "Payment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Certificate" ADD CONSTRAINT "Certificate_studentId_fkey" FOREIGN KEY ("studentId") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -651,3 +933,21 @@ ALTER TABLE "Certificate" ADD CONSTRAINT "Certificate_cohortId_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "ActivityLog" ADD CONSTRAINT "ActivityLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AttendanceQRCode" ADD CONSTRAINT "AttendanceQRCode_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Admin"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AttendanceQRCode" ADD CONSTRAINT "AttendanceQRCode_cohortId_fkey" FOREIGN KEY ("cohortId") REFERENCES "Cohort"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AttendanceLog" ADD CONSTRAINT "AttendanceLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AttendanceLog" ADD CONSTRAINT "AttendanceLog_qrCodeId_fkey" FOREIGN KEY ("qrCodeId") REFERENCES "AttendanceQRCode"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AttendanceLog" ADD CONSTRAINT "AttendanceLog_cohortId_fkey" FOREIGN KEY ("cohortId") REFERENCES "Cohort"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AttendanceLog" ADD CONSTRAINT "AttendanceLog_timetableId_fkey" FOREIGN KEY ("timetableId") REFERENCES "Timetable"("id") ON DELETE SET NULL ON UPDATE CASCADE;

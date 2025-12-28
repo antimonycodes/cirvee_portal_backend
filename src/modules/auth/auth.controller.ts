@@ -41,11 +41,13 @@ export class AuthController {
 
   static async adminLogin(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, password } = req.body;
-      const result = await AuthService.staffLogin(email, password);
+      const { identifier, password } = req.body;
+      logger.info("Staff login identifier:", identifier);
+      logger.info("Staff login password:", password);
+      const result = await AuthService.staffLogin(identifier, password);
       return ResponseUtil.success(res, "Login successful", result);
     } catch (error: any) {
-      logger.error("Admin login error:", error);
+      logger.error("Staff login error:", error);
       return ResponseUtil.unauthorized(res, error.message);
     }
   }

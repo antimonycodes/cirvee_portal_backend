@@ -25,6 +25,7 @@ import academicRoutes from "./modules/academic/academic.routes";
 import attendanceRoutes from "./modules/attendance/attendance.routes";
 import communityRoutes from "./modules/community/community.routes";
 import announcementRoutes from "./modules/announcement/announcement.routes";
+import paymentRoutes from "./modules/payment/payment.routes";
 
 dotenv.config();
 
@@ -98,7 +99,7 @@ const swaggerOptions: swaggerJSDoc.Options = {
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
 
 app.use(
-  "/docs",
+  "/api/v1/docs",
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
     customCss: ".swagger-ui .topbar { display: none }",
@@ -232,6 +233,7 @@ app.use("/api/v1/academic", academicRoutes);
 app.use("/api/v1/attendance", attendanceRoutes);
 app.use("/api/v1/communities", communityRoutes);
 app.use("/api/v1/announcements", announcementRoutes);
+app.use("/api/v1/payments", paymentRoutes);
 
 //Error Handlers
 app.use(notFoundHandler);

@@ -27,18 +27,44 @@ enum AttendanceStatus {
   ABSENT
 }
 
-enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
-  PARTIAL
+enum PaymentState {
+  PENDING           // Payment initiated but not confirmed
+  PROCESSING        // Being processed by payment gateway
+  COMPLETED         
+  FAILED            
+  REFUNDED          
+  CANCELLED         
+  EXPIRED           // Payment link/session expired
 }
 
-enum PaymentPlan {
-  FULL
-  INSTALLMENT
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  USSD
+  MOBILE_MONEY
+  QR_CODE
 }
+
+enum InstallmentPlan {
+  FULL_PAYMENT      
+  TWO_INSTALLMENTS  
+}
+
+enum TransactionType {
+  FULL_PAYMENT
+  FIRST_INSTALLMENT
+  SECOND_INSTALLMENT
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+
 
 enum CohortStatus {
   UPCOMING
@@ -118,6 +144,7 @@ model User {
   attendanceLogs     AttendanceLog[]
   communitiesCreated Community[]
   communityMembers   CommunityMember[]
+  payments           Payment[]
 
   @@index([email])
   @@index([role])
@@ -480,7 +507,7 @@ model Announcement {
   @@index([createdById])
   @@index([isGlobal])
   @@index([createdAt])
-  @@map("announcements")
+
 }
 
 model AnnouncementCohort {
@@ -495,7 +522,7 @@ model AnnouncementCohort {
   @@unique([announcementId, cohortId])
   @@index([announcementId])
   @@index([cohortId])
-  @@map("announcement_cohorts")
+
 }
 
 model AnnouncementLike {
@@ -510,36 +537,192 @@ model AnnouncementLike {
   @@unique([announcementId, userId])
   @@index([announcementId])
   @@index([userId])
-  @@map("announcement_likes")
 }
 
 // PAYMENTS & FINANCE
 
 model Payment {
-  id                   String        @id @default(uuid())
-  studentId            String
-  courseId             String
-  cohortId             String
-  amount               Decimal       @db.Decimal(10, 2)
-  status               PaymentStatus @default(PENDING)
-  paymentMethod        String // card, bank_transfer...
-  transactionId        String?       @unique
-  plan                 PaymentPlan   @default(FULL)
-  totalInstallments    Int?
-  paidInstallments     Int?          @default(0)
-  amountPerInstallment Decimal?      @db.Decimal(10, 2)
-  nextDueDate          DateTime?
-  paidAt               DateTime?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  id                    String            @id @default(uuid())
+  
+  // Unique identifiers
+  reference             String            @unique //  internal reference
+  paystackReference     String?           @unique // Paystack's reference
+  idempotencyKey        String            @unique 
+  
+  // Relations
+  studentId             String
+  userId                String            
+  cohortId              String
+  courseId              String
+  
+  // Amount details (stored in kobo)
+  totalAmountKobo       Int               // Total course price in kobo
+  paidAmountKobo        Int               @default(0) // Amount paid so far
+  balanceKobo           Int               // Remaining balance
+  
+  // Payment details
+  status                PaymentState     @default(PENDING)
+  paymentMethod         PaymentMethod?
+  currency              String            @default("NGN")
+  
+  // Installment details
+  installmentPlan       InstallmentPlan   @default(FULL_PAYMENT)
+  
+  // First installment
+  firstInstallmentKobo      Int?          // Amount for first installment
+  firstInstallmentPaidAt    DateTime?
+  firstInstallmentReference String?
+  
+  // Second installment
+  secondInstallmentKobo     Int?          // Remaining amount
+  secondInstallmentDueDate  DateTime?
+  secondInstallmentPaidAt   DateTime?
+  secondInstallmentReference String?
+  
+  // Payment gateway details
+  paystackAuthUrl       String?           // Paystack Authorization URL  
+  paystackAccessCode    String?
+  paystackChannels      String[]          // Allowed payment channels
+  
+  // Metadata
+  ipAddress             String?
+  userAgent             String?
+  metadata              Json?           
+  
+  // Audit trail
+  initiatedAt           DateTime          @default(now())
+  confirmedAt           DateTime?         // When payment was confirmed
+  expiresAt             DateTime?         // Payment session expiry
+  lastCheckedAt         DateTime?         // Last webhook/verification check
+  
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  course  Course  @relation(fields: [courseId], references: [id])
-  cohort  Cohort  @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  // Relations
+  student               Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  user                  User              @relation(fields: [userId], references: [id])
+  cohort                Cohort            @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  course                Course            @relation(fields: [courseId], references: [id])
+  
+  // Child records
+  transactions          PaymentTransaction[]
+  refunds               PaymentRefund[]
+  auditLogs             PaymentAuditLog[]
 
+  @@index([reference])
+  @@index([paystackReference])
   @@index([studentId])
+  @@index([cohortId])
   @@index([status])
-  @@index([transactionId])
+  @@index([installmentPlan])
+  @@index([createdAt])
+  @@index([idempotencyKey])
+ 
+}
+
+// Tracking transaction attempt 
+model PaymentTransaction {
+  id                    String            @id @default(uuid())
+  paymentId             String
+  
+  // Transaction details
+  reference             String            @unique // Transaction-specific reference
+  paystackReference     String?           // Paystack transaction reference
+  type                  TransactionType   // 'FIRST_INSTALLMENT', 'SECOND_INSTALLMENT', 'FULL_PAYMENT'
+  
+  // Amount (in kobo)
+  amountKobo            Int
+  currency              String            @default("NGN")
+  
+  // Status
+  status                PaymentState    @default(PENDING)
+  paymentMethod         PaymentMethod?
+  
+  // Gateway response
+  gatewayResponse       Json?             // Full response from Paystack
+  gatewayMessage        String?
+  gatewayCode           String?
+  
+  // Timestamps
+  initiatedAt           DateTime          @default(now())
+  completedAt           DateTime?
+  failedAt              DateTime?
+  
+  // Metadata
+  ipAddress             String?
+  channel               String?           // card, bank, ussd...
+  
+  // Relations
+  payment               Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([reference])
+  @@index([paystackReference])
+  @@index([status])
+  @@index([initiatedAt])
+
+}
+
+// Tracks refunds
+model PaymentRefund {
+  id                    String            @id @default(uuid())
+  paymentId             String
+  
+  // Refund details
+  reference             String            @unique
+  amountKobo            Int               // Amount refunded in kobo
+  reason                String
+  
+  // Status
+  status                RefundStatus @default(PENDING)  // PENDING, PROCESSING, COMPLETED, FAILED
+  
+  // Gateway details
+  paystackReference     String?
+  gatewayResponse       Json?
+  
+  // Audit
+  initiatedBy           String            // Admin user ID
+  initiatedAt           DateTime          @default(now())
+  completedAt           DateTime?
+  
+  // Relations
+  payment               Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([reference])
+  @@index([status])
+
+}
+
+//  audit log for all payment activities
+model PaymentAuditLog {
+  id                    String            @id @default(uuid())
+  paymentId             String
+  
+  // Action details
+  action                String            // INITIATED, VERIFIED, COMPLETED, FAILED, REFUNDED...
+  actor                 String?           // User/System that performed action
+  actorType             String            // USER, SYSTEM, WEBHOOK, ADMIN
+  
+  // Details
+  description           String
+  previousStatus        String?
+  newStatus             String?
+  
+  // Metadata
+  metadata              Json?
+  ipAddress             String?
+  
+  // Timestamp
+  timestamp             DateTime          @default(now())
+  
+  // Relations
+  payment               Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([action])
+  @@index([timestamp])
+
 }
 
 // CERTIFICATES
