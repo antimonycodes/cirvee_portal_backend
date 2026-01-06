@@ -22,6 +22,7 @@ export const REDIS_URL = redisUrl;
 export const redisConfig: RedisOptions = {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
+  family: 0, // Support both IPv4 and IPv6
 };
 
 const redis = new Redis(redisUrl, redisConfig);
