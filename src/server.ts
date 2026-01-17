@@ -6,7 +6,6 @@ import { connectDatabase, disconnectDatabase } from "@config/database";
 import redis, { testRedis } from "./config/redis";
 import logger from "./utils/logger";
 import { PaymentScheduler } from "./modules/payment/payment.scheduler";
-import "./workers/email.worker"; // Start email worker
 
 const PORT = process.env.PORT || 5000;
 
@@ -26,13 +25,21 @@ const startServer = async () => {
       logger.warn(" Redis test failed, but server will continue");
     }
 
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, async () => {
       logger.info("=".repeat(50));
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV}`);
       logger.info(`Health check: http://localhost:${PORT}/api/v1/health`);
       logger.info(`API Docs: http://localhost:${PORT}/api/v1/docs`);
       logger.info(` System Test: http://localhost:${PORT}/api/v1/test-system`);
+      
+      try {
+        // Start email worker after server is running
+        await import("./workers/email.worker");
+        logger.info(" Email worker started");
+      } catch (error) {
+        logger.error("Failed to start email worker:", error);
+      }
     });
 
     const gracefulShutdown = async (signal: string) => {
